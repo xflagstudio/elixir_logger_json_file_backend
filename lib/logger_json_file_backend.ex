@@ -20,8 +20,8 @@ defmodule LoggerJSONFileBackend do
   end
 
   @impl :gen_event
-  def handle_event({level, _gl, {Logger, msg, ts, md}}, %{level: min_level}=state) do
-    if is_nil(min_level) or Logger.compare_levels(level, min_level) != :lt do
+  def handle_event({level, _gl, {Logger, msg, ts, md}}, %{level: min_level, metadata_filter: metadata_filter}=state) do
+    if (is_nil(min_level) or Logger.compare_levels(level, min_level) != :lt) and metadata_matches?(md, metadata_filter) do
       log_event(level, msg, ts, md, state)
     else
       {:ok, state}
@@ -116,8 +116,20 @@ defmodule LoggerJSONFileBackend do
     end
   end
 
+  @doc false
+  @spec metadata_matches?(Keyword.t, nil|Keyword.t) :: true|false
+  def metadata_matches?(_md, nil), do: true
+  def metadata_matches?(_md, []), do: true # all of the filter keys are present
+  def metadata_matches?(md, [{key, val}|rest]) do
+    case Keyword.fetch(md, key) do
+      {:ok, ^val} ->
+        metadata_matches?(md, rest)
+      _ -> false #fail on first mismatch
+    end
+  end
+
   defp configure(name, opts) do
-    state = %{name: nil, path: nil, io_device: nil, inode: nil, level: nil, metadata: nil, json_encoder: nil, triming: false, uuid: false}
+    state = %{name: nil, path: nil, io_device: nil, inode: nil, level: nil, metadata: nil, metadata_filter: nil, json_encoder: nil, triming: false, uuid: false}
     configure(name, opts, state)
   end
 
@@ -126,13 +138,14 @@ defmodule LoggerJSONFileBackend do
     opts = Keyword.merge(env, opts)
     Application.put_env(:logger, name, opts)
 
-    level        = Keyword.get(opts, :level, :info)
-    metadata     = Keyword.get(opts, :metadata, [])
-    path         = Keyword.get(opts, :path)
-    json_encoder = Keyword.get(opts, :json_encoder, Jason)
-    triming      = Keyword.get(opts, :metadata_triming, true)
-    uuid         = Keyword.get(opts, :uuid, false)
+    level           = Keyword.get(opts, :level, :info)
+    metadata        = Keyword.get(opts, :metadata, [])
+    metadata_filter = Keyword.get(opts, :metadata_filter)
+    path            = Keyword.get(opts, :path)
+    json_encoder    = Keyword.get(opts, :json_encoder, Jason)
+    triming         = Keyword.get(opts, :metadata_triming, true)
+    uuid            = Keyword.get(opts, :uuid, false)
 
-    %{state | name: name, path: path, level: level, metadata: metadata, json_encoder: json_encoder, triming: triming, uuid: uuid}
+    %{state | name: name, path: path, level: level, metadata: metadata, metadata_filter: metadata_filter, json_encoder: json_encoder, triming: triming, uuid: uuid}
   end
 end

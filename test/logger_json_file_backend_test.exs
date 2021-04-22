@@ -26,6 +26,30 @@ defmodule LoggerJSONFileBackendTest do
     assert not Map.has_key?(json_log, "uuid")
   end
 
+  test "test metadata_filter" do
+    refute File.exists?(path())
+    config [path: "test/logs/test.log", level: :info, metadata: [:foo, :pid], metadata_filter: [status: 404], metadata_triming: true, json_encoder: Jason, uuid: false]
+    #
+    Logger.error("Not found", [foo: "bar", status: 404])
+    assert File.exists?(path())
+    json_log = Jason.decode! log()
+    assert json_log["level"] == "error"
+    assert json_log["message"] == "Not found"
+    path() && File.rm_rf!(Path.dirname(path()))
+    #
+    Logger.info("OK")
+    refute File.exists?(path())
+    #
+    Logger.info("OK", [status: 200])
+    refute File.exists?(path())
+    #
+    Logger.error("Not found again", [status: 404])
+    assert File.exists?(path())
+    json_log = Jason.decode! log()
+    assert json_log["level"] == "error"
+    assert json_log["message"] == "Not found again"
+  end
+
   test "can log structured object" do
     Logger.info("msg body", [foo: %{bar: [:baz]}])
     json_log = Jason.decode! log()
